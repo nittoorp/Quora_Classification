@@ -1,0 +1,303 @@
+import os
+import time
+import numpy as np
+import pandas as bp
+import math
+import string
+import re
+from sklearn import metrics
+from sklearn.model_selection import train_test_split
+from tqdm import tqdm
+tqdm.pandas()
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
+from keras.models import Model
+from keras.layers import *
+from keras import initializers, regularizers, constraints, optimizers, layers
+
+# Fill missing words from our dictionary to not_found nf
+# Tokenizing the words and forming a vector sequence
+# Padding the sequences if sentence has no. of words greater than max_len or if no. of words in sentence
+# is less than the max_len then we pad it with 0's
+# no. of words in our dictionary capped to 50k i.e max_features is 50k
+# using maxlen as 100
+# 350 word embeddings
+
+def tofill(x):
+	return x["question_text"].fillna("_####_").values
+
+def padding(x, y):
+	return pad_sequences(x, maxlen=y)
+
+def model_building():
+	input = Input(shape=(75,))
+	model_without_embeddings = Embedding(50000, 300)(input)
+	model_without_embeddings = Bidirectional(CuDNNGRU(64, return_sequences=True))(model_without_embeddings)
+	model_without_embeddings = GlobalMaxPool1D()(model_without_embeddings)
+	model_without_embeddings = Dense(16, activation="relu")(model_without_embeddings)
+	model_without_embeddings = Dropout(0.1)(model_without_embeddings)
+	model_without_embeddings = Dense(1, activation="sigmoid")(model_without_embeddings)
+	model = Model(inputs=input, outputs=model_without_embeddings)
+	model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+	return model
+
+#to clean the data for redundant words and spelling mistakes, like i'll => i will, and qorua => quora
+def data_cleaning(word_to_clean):
+    word_to_clean = str(word_to_clean)
+    for p in string.punctuation + '“…':
+        word_to_clean = word_to_clean.replace(p, ' ' + p + ' ')
+        word_to_clean = word_to_clean.replace('_', '')
+    word_to_clean = re.sub("`","'", word_to_clean)
+    word_to_clean = re.sub("(?i)\'s",' is', word_to_clean)
+    word_to_clean = re.sub("(?i)\'d",' would', word_to_clean)
+    word_to_clean = re.sub("(?i)\'ll",' will', word_to_clean)
+    word_to_clean = re.sub("(?i)\'re",' are', word_to_clean)
+    word_to_clean = re.sub("(?i)\'ve",' have', word_to_clean)
+    word_to_clean = re.sub("(?i)\'m",' am', word_to_clean)
+    word_to_clean = re.sub("(?i)n\’t",' not', word_to_clean)
+    word_to_clean = re.sub("(?i)\’re",' are', word_to_clean)
+    word_to_clean = re.sub("(?i)\’s",' is', word_to_clean)
+    word_to_clean = re.sub("(?i)\’t",' not', word_to_clean)
+    word_to_clean = re.sub("(?i)\’ve",' have', word_to_clean)
+    word_to_clean = re.sub("(?i)\’m",' am', word_to_clean)
+    word_to_clean = re.sub("(?i)\’d",' would', word_to_clean)
+    word_to_clean = re.sub("(?i)\’ll",' will', word_to_clean)
+    word_to_clean = re.sub("(?i)\'t",' not', word_to_clean)
+    word_to_clean = re.sub("(?i)n\'t",' not', word_to_clean)
+    word_to_clean = re.sub('(?i)Quorans','quora', word_to_clean)
+    word_to_clean = re.sub('(?i)Qoura','quora', word_to_clean)
+    word_to_clean = re.sub('(?i)Quoran','quora', word_to_clean)
+    word_to_clean = re.sub('(?i)Qoora','quora', word_to_clean)
+    word_to_clean = re.sub('(?i)quorans','quora', word_to_clean)
+    word_to_clean = re.sub('(?i)Qoura','quora', word_to_clean)
+    word_to_clean = re.sub('(?i)Blockchain','blockchain', word_to_clean)
+    word_to_clean = re.sub('(?i)Blockchains','blockchain', word_to_clean)
+    word_to_clean = re.sub('(?i)Cryptocurrency','cryptocurrency', word_to_clean)
+    word_to_clean = re.sub('(?i)cryptocurrencies','cryptocurrency', word_to_clean)
+    word_to_clean = re.sub('(?i)Brexit','britain exit', word_to_clean)
+    word_to_clean = re.sub('(?i)vegeterian','vegetarian', word_to_clean)
+    word_to_clean = re.sub('(?i)vaccuum', 'vacuum', word_to_clean)
+    word_to_clean = re.sub('(?i)peice','piece', word_to_clean)
+    word_to_clean = re.sub('(?i)nineth','ninth', word_to_clean)
+    word_to_clean = re.sub('(?i)Caucasion',' Caucasian', word_to_clean)
+    word_to_clean = re.sub('(?i)Dalmation',' Dalmatian', word_to_clean)
+    word_to_clean = re.sub('(?i)inate',' innate', word_to_clean)
+    word_to_clean = re.sub('(?i)neice',' niece', word_to_clean)
+    word_to_clean = re.sub('(?i)preceeding',' preceding', word_to_clean)
+    word_to_clean = re.sub('(?i)hight',' height', word_to_clean)
+    word_to_clean = re.sub('(?i)fourty','forty', word_to_clean)
+    word_to_clean = re.sub('(?i)noticable','noticeable', word_to_clean)
+    word_to_clean = re.sub('(?i)opthamologist',' ophthalmologist', word_to_clean)
+    word_to_clean = re.sub('(?i)litecoin','bitcoin', word_to_clean)
+    word_to_clean = re.sub('(?i)litecoins','bitcoins', word_to_clean)
+    word_to_clean = re.sub('(?i)ethereum','bitcoin', word_to_clean)
+    word_to_clean = re.sub('(?i)ethereums','bitcoins', word_to_clean)
+    word_to_clean = re.sub('(?i)expresso','espresso', word_to_clean)
+    word_to_clean = re.sub('(?i)acheive','achieve', word_to_clean)
+    word_to_clean = re.sub('(?i)hampster','hamster', word_to_clean)
+    word_to_clean = re.sub('(?i)knowlege','knowledge', word_to_clean)
+    word_to_clean = re.sub('(?i)missle','missile', word_to_clean)
+    word_to_clean = re.sub('(?i)wierd','weird', word_to_clean)
+    word_to_clean = re.sub('(?i)decathalon',' decathlon', word_to_clean)
+    word_to_clean = re.sub('(?i)sieze','seize', word_to_clean)
+    word_to_clean = re.sub('(?i)supercede','supersede', word_to_clean)
+    word_to_clean = re.sub('(?i)pronounciation',' pronunciation', word_to_clean)
+    word_to_clean = re.sub('(?i)persue',' pursue', word_to_clean)
+    word_to_clean = re.sub('(?i)lazer','laser', word_to_clean)
+    word_to_clean = re.sub('(?i)freind','friend', word_to_clean)
+    word_to_clean = re.sub('(?i) morgage','mortgage', word_to_clean)
+    word_to_clean = re.sub('(?i) reccomend',' recommend', word_to_clean)
+    word_to_clean = re.sub('(?i) decaffinated',' decaffeinated', word_to_clean)
+    word_to_clean = re.sub('(?i) diarhea',' diarrhoea', word_to_clean)
+    word_to_clean = re.sub('(?i) geneology',' genealogy', word_to_clean)
+    word_to_clean = re.sub('(?i) intresting','interesting', word_to_clean)
+    word_to_clean = re.sub('(?i) rasberry','raspberry', word_to_clean)
+    word_to_clean = re.sub('(?i) sentance','sentence', word_to_clean)
+    word_to_clean = re.sub('(?i) enviroment','environment', word_to_clean)
+    word_to_clean = re.sub('(?i) flouride',' fluoride', word_to_clean)
+    word_to_clean = re.sub('(?i) copywrite','copyright', word_to_clean)
+    word_to_clean = re.sub('(?i)Binance','cryptocurrency', word_to_clean)
+    word_to_clean = re.sub('(?i)coinbase','cryptocurrency', word_to_clean)
+    word_to_clean = re.sub('(?i)altcoin','bitcoin', word_to_clean)
+    word_to_clean = re.sub('(?i)altcoins','bitcoins', word_to_clean)
+    word_to_clean = re.sub('(?i)demonetisation','demonetization', word_to_clean)
+    word_to_clean = re.sub('(?i)Brexit','britain exit', word_to_clean)
+    return word_to_clean
+
+#loading data for training and testing 
+data_for_training = bp.read_csv('../train.csv')
+data_for_testing = bp.read_csv('../test.csv')
+
+# function call for data cleaning
+data_for_training['question_text'] = data_for_training['question_text'].progress_apply(lambda word_to_clean: data_cleaning(word_to_clean))
+data_for_testing['question_text'] = data_for_testing['question_text'].progress_apply(lambda word_to_clean: data_cleaning(word_to_clean))
+
+# Split training data set into data_for_training and val_data
+data_for_training, val_data = train_test_split(data_for_training, test_size=0.3, random_state=1009)
+train_data_filling = tofill(data_for_training)
+val_data_filling = tofill(val_data)
+test_data_filling = tofill(data_for_testing)
+
+# no. of words in our dictionary maximum_feature_size limited to 50000
+# no. of word per sentence we  restrcited to 75
+maximum_feature_size = 50000
+maximum_length = 75
+tokenizer = Tokenizer(num_words=maximum_feature_size)
+tokenizer.fit_on_texts(list(train_data_filling))
+train_data_filling = tokenizer.texts_to_sequences(train_data_filling)
+val_data_filling = tokenizer.texts_to_sequences(val_data_filling)
+test_data_filling = tokenizer.texts_to_sequences(test_data_filling)
+
+train_data_filling = padding(train_data_filling, maximum_length)
+val_data_filling = padding(val_data_filling, maximum_length)
+test_data_filling = padding(test_data_filling, maximum_length)
+train_output_filling = data_for_training['target'].values
+val_output_filling = val_data['target'].values
+
+#model running without embeddings
+def without_embeddings_model():
+  print("Inside without Embeddings")
+  model = model_building()
+  model.fit(train_data_filling, train_output_filling, batch_size=512, epochs=1, validation_data=(val_data_filling, val_output_filling))
+
+  pred_value = model.predict([val_data_filling], batch_size=1024, verbose=1)
+  for threshhold_Value in np.arange(0.1, 0.501, 0.01):
+    threshhold_Value = np.round(threshhold_Value, 2)
+    print("score of F1  at threshold {0} is {1}".format(threshhold_Value, metrics.f1_score(val_output_filling, (pred_value>threshhold_Value).astype(int))))
+  pred_test = model.predict([test_data_filling], batch_size=1024, verbose=1)
+
+def getMeanStd(stack_embedding_indices):
+  return stack_embedding_indices.mean(), stack_embedding_indices.std()
+
+#Model running with Wiki Word2Vec Embeddings of 300 Dimensions
+def wiki_embed_model(dimensions_size):
+  #dimesnions_size we are imiting to 300
+  print("Inside Wiki Model for embedding size ",dimensions_size)
+  embedding_wiki_file = '../root/data/wiki-news-300d-1M.vec'
+  def coefficient_values(word,*arr):
+    return word, np.asarray(arr, dtype='float32')
+  index_of_embed_files = dict(coefficient_values(*o.split(" ")) for o in open(embedding_wiki_file) if len(o)>100)
+
+  stack_embedding_indices = np.stack(index_of_embed_files.values())
+  indices_mean,indices_std = getMeanStd(stack_embedding_indices)
+  #indices_mean,indices_std = stack_embedding_indices.mean(), stack_embedding_indices.std()
+  dimensions_size = stack_embedding_indices.shape[1]
+
+  word_index = tokenizer.word_index
+  max_no_of_words = min(maximum_feature_size, len(word_index))
+  embedding_matrix = np.random.normal(indices_mean, indices_std, (max_no_of_words, dimensions_size))
+  for word, i in word_index.items():
+    if i >= maximum_feature_size: continue
+    embedding_vector = index_of_embed_files.get(word)
+    if embedding_vector is not None:
+      embedding_matrix[i] = embedding_vector
+
+  input = Input(shape=(maximum_length,))
+  model_with_wiki_embeddings = Embedding(maximum_feature_size, dimensions_size, weights=[embedding_matrix])(input)
+  model_with_wiki_embeddings = Bidirectional(CuDNNGRU(64, return_sequences=True))(model_with_wiki_embeddings)
+  model_with_wiki_embeddings = GlobalMaxPool1D()(model_with_wiki_embeddings)
+  model_with_wiki_embeddings = Dense(16, activation="relu")(model_with_wiki_embeddings)
+  model_with_wiki_embeddings = Dropout(0.1)(model_with_wiki_embeddings)
+  model_with_wiki_embeddings = Dense(1, activation="sigmoid")(model_with_wiki_embeddings)
+  model = Model(inputs=input, outputs=model_with_wiki_embeddings)
+  model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+  model.fit(train_data_filling, train_output_filling, batch_size=512, epochs=1, validation_data=(val_data_filling, val_output_filling))
+
+  pred_value = model.predict([val_data_filling], batch_size=1024, verbose=1)
+  for threshhold_Value in np.arange(0.1, 0.501, 0.01):
+    threshhold_Value = np.round(threshhold_Value, 2)
+    print("score of F1 at threshold value {0} is {1}".format(threshhold_Value, metrics.f1_score(val_output_filling, (pred_value>threshhold_Value).astype(int))))
+
+  pred_test = model.predict([test_data_filling], batch_size=1024, verbose=1)
+  return pred_value, pred_test
+
+#Model running on Glove Embeddings of Dimensions 50 and 100
+def glove_embed_model(dimensions_size):
+  print("Inside Glove Model for embedding size ",dimensions_size)
+  if dimensions_size==50:
+    embedding_wiki_file = '../glove.6B.50d.txt'
+  if dimensions_size==100:
+    embedding_wiki_file = '../glove.6B.100d.txt'
+  def coefficient_values(word,*arr):
+    return word, np.asarray(arr, dtype='float32')
+  index_of_embed_files = dict(coefficient_values(*o.split(" ")) for o in open(embedding_wiki_file) if len(o)>100)
+
+  stack_embedding_indices = np.stack(index_of_embed_files.values())
+  indices_mean,indices_std = stack_embedding_indices.mean(), stack_embedding_indices.std()
+  dimensions_size = stack_embedding_indices.shape[1]
+
+  word_index = tokenizer.word_index
+  max_no_of_words = min(maximum_feature_size, len(word_index))
+  embedding_matrix = np.random.normal(indices_mean, indices_std, (max_no_of_words, dimensions_size))
+  for word, i in word_index.items():
+    if i >= maximum_feature_size: continue
+    embedding_vector = index_of_embed_files.get(word)
+    if embedding_vector is not None:
+      embedding_matrix[i] = embedding_vector
+
+  input = Input(shape=(maximum_length,))
+  model_with_wiki_embeddings = Embedding(maximum_feature_size, dimensions_size, weights=[embedding_matrix])(input)
+  #model_with_glove_100d = Bidirectional(LSTM(100, return_sequences=True, dropout=0.1, recurrent_dropout=0.1))(model_with_wiki_embeddings)
+  model_with_wiki_embeddings = Bidirectional(CuDNNGRU(64, return_sequences=True))(model_with_wiki_embeddings)
+  model_with_wiki_embeddings = GlobalMaxPool1D()(model_with_wiki_embeddings)
+  model_with_wiki_embeddings = Dense(16, activation="relu")(model_with_wiki_embeddings)
+  model_with_wiki_embeddings = Dropout(0.1)(model_with_wiki_embeddings)
+  model_with_wiki_embeddings = Dense(1, activation="sigmoid")(model_with_wiki_embeddings)
+  model = Model(inputs=input, outputs=model_with_wiki_embeddings)
+  model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+  #model.compile(loss='binary_crossentropy', optimizer='adagrad', metrics=['accuracy'])
+  #Adam is called as adaptive moment estimation
+    #AdaGrad maintains a per parameter learning rate that improves performance on problems with sparse gradients
+    # On paper Adam is a better optimiser wihch tries to take the best of both Adagrad and RMSProp i.e.
+    # where it tries to create a running average of first order and second order moments(mean and variance)
+    # and beta1 and beta 2 are the decay rates,
+    # Our problem is an NLP binary classification, so it seems only logical to go with binary cross_entropy
+    # Tried the optimizers adam and AdaGrad using loss function binary_crossentropy,
+    # Adam with binary cross-entropy works best
+
+  model.fit(train_data_filling, train_output_filling, batch_size=512, epochs=1, validation_data=(val_data_filling, val_output_filling))
+  pred_value = model.predict([val_data_filling], batch_size=1024, verbose=1)
+  for threshhold_Value in np.arange(0.1, 0.501, 0.01):
+    threshhold_Value = np.round(threshhold_Value, 2)
+    print("score of F1 at threshold value {0} is {1}".format(threshhold_Value, metrics.f1_score(val_output_filling, (pred_value>threshhold_Value).astype(int))))
+
+  pred_test = model.predict([test_data_filling], batch_size=1024, verbose=1)
+  return pred_value, pred_test
+
+def findMax():
+  max = 0
+  for threshhold_Value in np.arange(0.1, 0.501, 0.01):
+    threshhold_Value = np.round(threshhold_Value, 2)
+    if (threshhold_Value > max):
+      max = threshhold_Value
+  return max
+
+#finding the average F1-Score of all 3 Word Embeddings(GLoVe 50d, GLoVe 100d and Wiki Word2Vec)
+def avg(p, v, s):
+  predicted_averages = 0.33*p + 0.33*v + 0.34*s
+  max_thresh_hold_point = 0
+  metrics_f1_score = 0
+  for threshhold_Value in np.arange(0.1, 0.501, 0.01):
+    threshhold_Value = np.round(threshhold_Value, 2)
+    f1_metrics = metrics.f1_score(val_output_filling, (predicted_averages>threshhold_Value).astype(int))
+    if(f1_metrics > max_thresh_hold_point):
+      metrics_f1_score = f1_metrics
+      max_thresh_hold_point = threshhold_Value
+      print("Average score of F1 at threshold {0} is {1}".format(threshhold_Value, metrics.f1_score(val_output_filling, (predicted_averages>threshhold_Value).astype(int))))
+  #return predicted_averages
+
+  
+#Function calls to all related Models  
+without_embeddings_model()
+wiki_pred_value, wiki_pred_test = wiki_embed_model(300)
+glove_50_prediction_value, glove_50_prediction_test = glove_embed_model(50)
+glove_100_prediction_value, glove_100_prediction_test = glove_embed_model(100)
+#Calculating the Average F1-Score
+avg(wiki_pred_value, glove_50_prediction_value, glove_100_prediction_value)
+predicted_averages =  0.33*wiki_pred_test + 0.33*glove_50_prediction_test + 0.34*glove_100_prediction_test
+predicted_averages = (predicted_averages>0.35).astype(int)
+predicted_values = bp.DataFrame({"qid":data_for_testing["qid"].values})
+predicted_values['prediction'] = predicted_averages
+#Output of Predicted Values into a .csv Format
+predicted_values.to_csv("Submission.csv", index=False)
